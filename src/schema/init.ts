@@ -304,6 +304,24 @@ export async function initServiceTables(
     )
   `);
 
+  // Add estimated_cost_micro_cents. estimated_cost_cents is an INTEGER, and a
+  // structured-output call costs a fraction of a cent, so that column rounds
+  // nearly every row to 0. Old rows keep their value and are read through
+  // COALESCE; no backfill, since the lost precision cannot be recovered.
+  await client.unsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = '${s}'
+        AND table_name = 'usage_analytics'
+        AND column_name = 'estimated_cost_micro_cents'
+      ) THEN
+        ALTER TABLE ${s}.usage_analytics ADD COLUMN estimated_cost_micro_cents BIGINT;
+      END IF;
+    END $$;
+  `);
+
   // Create indexes for analytics queries
   await client.unsafe(`
     CREATE INDEX IF NOT EXISTS idx_usage_endpoint_timestamp

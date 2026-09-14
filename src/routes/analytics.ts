@@ -196,7 +196,7 @@ export function createAnalyticsRouter(ctx: ServiceContext) {
           failed_requests: sql<number>`SUM(CASE WHEN NOT ${usageAnalytics.success} THEN 1 ELSE 0 END)`,
           total_tokens_input: sql<number>`COALESCE(SUM(${usageAnalytics.tokens_input}), 0)`,
           total_tokens_output: sql<number>`COALESCE(SUM(${usageAnalytics.tokens_output}), 0)`,
-          total_estimated_cost_cents: sql<number>`COALESCE(SUM(${usageAnalytics.estimated_cost_cents}), 0)`,
+          total_estimated_cost_cents: sql<number>`COALESCE(SUM(COALESCE(${usageAnalytics.estimated_cost_micro_cents}, ${usageAnalytics.estimated_cost_cents}::bigint * 1000000)), 0) / 1000000.0`,
           average_latency_ms: sql<number>`COALESCE(AVG(${usageAnalytics.latency_ms}), 0)`,
         })
         .from(usageAnalytics)
@@ -229,7 +229,7 @@ export function createAnalyticsRouter(ctx: ServiceContext) {
           failed_requests: sql<number>`SUM(CASE WHEN NOT ${usageAnalytics.success} THEN 1 ELSE 0 END)`,
           total_tokens_input: sql<number>`COALESCE(SUM(${usageAnalytics.tokens_input}), 0)`,
           total_tokens_output: sql<number>`COALESCE(SUM(${usageAnalytics.tokens_output}), 0)`,
-          total_estimated_cost_cents: sql<number>`COALESCE(SUM(${usageAnalytics.estimated_cost_cents}), 0)`,
+          total_estimated_cost_cents: sql<number>`COALESCE(SUM(COALESCE(${usageAnalytics.estimated_cost_micro_cents}, ${usageAnalytics.estimated_cost_cents}::bigint * 1000000)), 0) / 1000000.0`,
           average_latency_ms: sql<number>`COALESCE(AVG(${usageAnalytics.latency_ms}), 0)`,
         })
         .from(usageAnalytics)

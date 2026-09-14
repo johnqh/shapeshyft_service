@@ -14,6 +14,7 @@ import {
   boolean,
   timestamp,
   integer,
+  bigint,
   jsonb,
   real,
   uniqueIndex,
@@ -292,7 +293,12 @@ export function createServiceTables(
     tokens_input: integer("tokens_input"),
     tokens_output: integer("tokens_output"),
     latency_ms: integer("latency_ms"),
+    /** Legacy: whole cents, so nearly every call rounded to 0. Kept for old rows. */
     estimated_cost_cents: integer("estimated_cost_cents"),
+    /** Estimated cost in micro-cents (10^-6 cent). NULL on rows written before it existed. */
+    estimated_cost_micro_cents: bigint("estimated_cost_micro_cents", {
+      mode: "bigint",
+    }),
     request_metadata: jsonb("request_metadata"),
   });
 

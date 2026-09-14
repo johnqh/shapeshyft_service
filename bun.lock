@@ -6,7 +6,7 @@
       "name": "@sudobility/shapeshyft_service",
       "dependencies": {
         "@hono/zod-validator": "^0.7.5",
-        "@sudobility/shapeshyft_engine": "^1.0.1",
+        "@sudobility/shapeshyft_engine": "^1.0.3",
         "zod": "^3.24.0",
       },
       "devDependencies": {
@@ -246,7 +246,7 @@
 
     "@sudobility/ratelimit_service": ["@sudobility/ratelimit_service@1.0.39", "", { "peerDependencies": { "@sudobility/types": "^1.9.67", "drizzle-orm": "^0.45.0", "hono": "^4.0.0", "postgres": "^3.4.0" } }, "sha512-/GA+c4NezQp0/CfrJyf60KclOHK/MxNDhKAhZLWLSb3U5/1gQ1Mp9rI3lT53kNe/DPVKX7mshfudAk51Jimbmg=="],
 
-    "@sudobility/shapeshyft_engine": ["@sudobility/shapeshyft_engine@1.0.1", "", { "dependencies": { "@sudobility/types": "^1.9.67" }, "peerDependencies": { "@anthropic-ai/sdk": "^0.39.0", "@google/generative-ai": "^0.21.0", "groq-sdk": "^0.37.0", "openai": "^4.77.0", "sharp": "^0.34.5" }, "optionalPeers": ["@anthropic-ai/sdk", "@google/generative-ai", "groq-sdk", "openai", "sharp"] }, "sha512-G85zVoqIVI+kJIr70XralnT+sy6FHahd40I5tzIQDdfJz+aIO4Vm1B6CNrEwlbW1TZA6yP74qRnuZT3r8xtw8w=="],
+    "@sudobility/shapeshyft_engine": ["@sudobility/shapeshyft_engine@1.0.3", "", { "dependencies": { "@sudobility/types": "^1.9.67" }, "peerDependencies": { "@anthropic-ai/sdk": "^0.39.0", "@google/generative-ai": "^0.21.0", "groq-sdk": "^0.37.0", "openai": "^4.77.0", "sharp": "^0.35.4" }, "optionalPeers": ["@anthropic-ai/sdk", "@google/generative-ai", "groq-sdk", "openai", "sharp"] }, "sha512-rMASOTsAtdJrCdE6/cWwuyStZanOvXzTKxDwg8e3RFaVKsg+krEkElA0e4xdAXD8ChFnkg4fqaZZtWTAu0OLfw=="],
 
     "@sudobility/subscription_service": ["@sudobility/subscription_service@1.0.23", "", {}, "sha512-IbpWkMvyAirLZzX+7M1T74fVebWmyX/NCjyY2BCqL2jRQZGCEqb8JCVIYHXvqQd8gwx1E0foz+E9yb0SEWbngw=="],
 

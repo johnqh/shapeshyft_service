@@ -18,14 +18,15 @@ import {
 } from "@sudobility/shapeshyft_engine/types";
 import {
   ApiHelper,
-  estimateCost,
-  getModelPricing,
+  estimateResponseCost,
+  getFailedInvocationUsage,
   type LLMRequest,
   extractMediaFromInput,
   convertAllMediaIfNeeded,
   validateMediaCapabilities,
   validateWhisperRequest,
   isTranscriptionModel,
+  getProviderForModel,
   extractReservedFields,
   resolveMaxOutputTokens,
 } from "@sudobility/shapeshyft_engine";
@@ -686,6 +687,27 @@ export function createAiRouter(ctx: ServiceContext) {
       }
     }
 
+    /*
+      Whisper can hand its transcription to a second model for structured
+      extraction. That model runs on this endpoint's credential, so it must
+      belong to the same provider: any other would receive a Groq key.
+    */
+    const extractionModel =
+      model && isTranscriptionModel(model)
+        ? (endpoint.transcription_extraction_model ?? undefined)
+        : undefined;
+    if (
+      extractionModel &&
+      getProviderForModel(extractionModel) !== credential.provider
+    ) {
+      return c.json(
+        errorResponse(
+          `transcription_extraction_model "${extractionModel}" must be a ${credential.provider} model, since it runs on this endpoint's ${credential.provider} key`
+        ),
+        400
+      );
+    }
+
     // Build the prompts for LLM call (providers expect system/user format)
     // Use cleaned input (media replaced with placeholders)
     // Use context override if provided, otherwise use endpoint's configured context
@@ -732,6 +754,9 @@ export function createAiRouter(ctx: ServiceContext) {
         would do it to every endpoint that predates this column.
       */
       temperature: endpoint.temperature ?? undefined,
+      ...(extractionModel
+        ? { extractionModel, extractionApiKey: credential.apiKey }
+        : {}),
     };
 
     const llmRequest: LLMRequest =
@@ -769,6 +794,23 @@ export function createAiRouter(ctx: ServiceContext) {
       userPrompt: prompts.user,
     });
 
+    const priceInvocation = (
+      invocation: Parameters<typeof estimateResponseCost>[0]
+    ): number => {
+      const { costCents, pricingKnown } = estimateResponseCost(invocation, {
+        provider: credential.provider,
+        configuredModel: model,
+        at: new Date(startTime),
+      });
+      if (!pricingKnown) {
+        ctx.logger.warn(
+          "[AI] No catalog pricing for model; cost uses the default rate:",
+          { provider: credential.provider, model: invocation.model }
+        );
+      }
+      return costCents;
+    };
+
     try {
       const llmResponse = await provider.generate(llmRequest);
 
@@ -781,12 +823,7 @@ export function createAiRouter(ctx: ServiceContext) {
       });
 
       // 5. Calculate cost
-      const pricing = getModelPricing(llmResponse.model);
-      const costCents = estimateCost(
-        pricing,
-        llmResponse.usage.promptTokens,
-        llmResponse.usage.completionTokens
-      );
+      const costCents = priceInvocation(llmResponse);
 
       // 6. Log analytics and count the call
       await incrementCallCount(endpoint.uuid);
@@ -797,6 +834,7 @@ export function createAiRouter(ctx: ServiceContext) {
         tokens_output: llmResponse.usage.completionTokens,
         latency_ms: llmResponse.latencyMs,
         estimated_cost_cents: Math.round(costCents),
+        estimated_cost_micro_cents: toMicroCents(costCents),
         request_metadata: {
           model: llmResponse.model,
           provider: llmResponse.provider,
@@ -852,7 +890,9 @@ export function createAiRouter(ctx: ServiceContext) {
           tokens_input: llmResponse.usage.promptTokens,
           tokens_output: llmResponse.usage.completionTokens,
           latency_ms: llmResponse.latencyMs,
-          estimated_cost_cents: costCents,
+          // Micro-cent precision, the same the analytics row keeps; beyond it
+          // is floating-point noise.
+          estimated_cost_cents: Number(toMicroCents(costCents)) / 1_000_000,
           ...(llmResponse.finishReason
             ? { finish_reason: llmResponse.finishReason }
             : {}),
@@ -890,6 +930,14 @@ export function createAiRouter(ctx: ServiceContext) {
           ? (error.details as Record<string, unknown>)
           : undefined;
 
+      // A provider that answered with something unusable still billed for it.
+      // Record that cost here; it is not settled through afterInvoke, since
+      // the caller received no output.
+      const failedUsage = getFailedInvocationUsage(error);
+      const failedCostCents = failedUsage
+        ? priceInvocation(failedUsage)
+        : undefined;
+
       // Log failed analytics and count the call: the endpoint was invoked, so it
       // counts whether or not the provider answered.
       await incrementCallCount(endpoint.uuid);
@@ -898,6 +946,14 @@ export function createAiRouter(ctx: ServiceContext) {
         success: false,
         error_message: errorMessage,
         latency_ms: latencyMs,
+        ...(failedUsage && failedCostCents !== undefined
+          ? {
+              tokens_input: failedUsage.usage.promptTokens,
+              tokens_output: failedUsage.usage.completionTokens,
+              estimated_cost_cents: Math.round(failedCostCents),
+              estimated_cost_micro_cents: toMicroCents(failedCostCents),
+            }
+          : {}),
         request_metadata: errorDetails
           ? {
               model: debugInfo.request.model,
