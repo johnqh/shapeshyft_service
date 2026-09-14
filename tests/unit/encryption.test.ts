@@ -102,8 +102,11 @@ describe("Encryption", () => {
 
     it("should throw on tampered encrypted data", () => {
       const { encrypted, iv } = encryptApiKey("test");
-      // Tamper with the last byte to corrupt PKCS7 padding
-      const tampered = encrypted.slice(0, -2) + "ff";
+      // Drop the last byte. Overwriting it instead is flaky: the garbled final
+      // block still ends in valid PKCS7 padding about 1 time in 256, so
+      // decryption succeeds and nothing is thrown. A ciphertext that is not a
+      // whole number of blocks always fails.
+      const tampered = encrypted.slice(0, -2);
 
       expect(() => decryptApiKey(tampered, iv)).toThrow();
     });

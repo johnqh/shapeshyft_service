@@ -1,6 +1,6 @@
 {
   "name": "@sudobility/shapeshyft_service",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Shared tables, routes and middleware for ShapeShyft-style structured-output APIs",
   "type": "module",
   "main": "./dist/index.js",
@@ -68,7 +68,7 @@
     "openai": "^4.77.0",
     "postgres": "^3.4.7",
     "prettier": "^3.7.4",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.4",
     "typescript": "^5.9.3",
     "vitest": "^4.0.4"
   },
