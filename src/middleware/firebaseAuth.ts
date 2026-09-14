@@ -6,34 +6,9 @@
  */
 
 import type { Context, MiddlewareHandler, Next } from "hono";
-import type { DecodedIdToken } from "firebase-admin/auth";
 import { errorResponse } from "@sudobility/shapeshyft_engine/types";
 import { eq } from "drizzle-orm";
 import type { ServiceContext } from "../context.js";
-
-/**
- * Augment Hono's ContextVariableMap for type-safe context access.
- */
-declare module "hono" {
-  interface ContextVariableMap {
-    firebaseUser: DecodedIdToken;
-    userId: string;
-    userEmail: string | null;
-    siteAdmin: boolean;
-    /**
-     * How the caller authenticated. Neither key method has a firebaseUser.
-     * "api_key" is a personal key (acts as a user); "entity_api_key" is an
-     * entity key (acts as the entity itself).
-     */
-    authMethod: "firebase" | "api_key" | "entity_api_key";
-    /** UUID of the user API key used, when authMethod is "api_key" */
-    apiKeyId: string;
-    /** UUID of the entity API key used, when authMethod is "entity_api_key" */
-    entityApiKeyId: string;
-    /** Entity the request acts as, when authMethod is "entity_api_key" */
-    entityApiKeyEntityId: string;
-  }
-}
 
 /**
  * Path prefix an entity API key may reach.

@@ -1,6 +1,6 @@
 {
   "name": "@sudobility/shapeshyft_service",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Shared tables, routes and middleware for ShapeShyft-style structured-output APIs",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,7 +32,7 @@
   "license": "BUSL-1.1",
   "dependencies": {
     "@hono/zod-validator": "^0.7.5",
-    "@sudobility/shapeshyft_engine": "^1.0.0",
+    "@sudobility/shapeshyft_engine": "^1.0.1",
     "zod": "^3.24.0"
   },
   "peerDependencies": {

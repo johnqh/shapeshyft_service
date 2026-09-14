@@ -55,6 +55,7 @@ export function offlineConfig(
     } as any,
     email: { sendInvitationEmail: async () => {} },
     credentials: unusedResolver,
+    getPeerAddress: () => null,
     ...overrides,
   };
 }

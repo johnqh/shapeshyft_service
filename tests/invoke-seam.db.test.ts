@@ -144,7 +144,10 @@ describe("ai router: credential resolution and hooks", () => {
     expect(res.status).toBe(200);
     expect(seen).toHaveLength(1);
     expect(seen[0]!.provider).toBe("anthropic");
-    expect(seen[0]!.usage).toEqual({ promptTokens: 1000, completionTokens: 20 });
+    expect(seen[0]!.usage).toEqual({
+      promptTokens: 1000,
+      completionTokens: 20,
+    });
     expect(typeof seen[0]!.providerCostMicroCents).toBe("bigint");
     const rows = await analyticsRows();
     expect(rows.map(r => r.uuid)).toEqual([seen[0]!.usageAnalyticsId]);

@@ -2,6 +2,7 @@
  * @fileoverview Service configuration and the context every router closes over
  */
 
+import type { Context } from "hono";
 import type { RateLimitsConfig } from "@sudobility/ratelimit_service";
 import { createLLMProvider } from "@sudobility/shapeshyft_engine";
 import type {
@@ -50,6 +51,14 @@ export interface ShapeshyftServiceConfig {
   auth: AuthAdapter;
   email: EmailSender;
   credentials: ProviderCredentialResolver;
+  /**
+   * The TCP peer address of a request, e.g.
+   * `c => getConnInfo(c).remote.address ?? null` with `getConnInfo` from
+   * `hono/bun`. The endpoint IP allowlist trusts forwarded headers only when
+   * this peer is private (our own proxy). Return null when unknown: an
+   * allowlisted endpoint then denies the request.
+   */
+  getPeerAddress: (c: Context) => string | null | undefined;
   /** Extra zod fields validated on endpoint create/update. */
   endpointBinding?: EndpointBindingShapes;
   hooks?: InvokeHooks;
@@ -69,6 +78,7 @@ export interface ServiceContext {
   auth: AuthAdapter;
   email: EmailSender;
   credentials: ProviderCredentialResolver;
+  getPeerAddress: (c: Context) => string | null | undefined;
   hooks: InvokeHooks;
   logger: Logger;
   createProvider: typeof createLLMProvider;
@@ -97,6 +107,7 @@ export function buildContext(config: ShapeshyftServiceConfig): ServiceContext {
     auth: config.auth,
     email: config.email,
     credentials: config.credentials,
+    getPeerAddress: config.getPeerAddress,
     hooks: config.hooks ?? {},
     logger,
     createProvider: config.createProvider ?? createLLMProvider,

@@ -19,8 +19,7 @@ describe("endpoints router: provider binding", () => {
         return { ok: false, status: 400, message: "provider not available" };
       }
       const provider = (args.body.provider ?? args.current?.provider) as
-        | "openai"
-        | "anthropic";
+        "openai" | "anthropic";
       return {
         ok: true,
         provider,

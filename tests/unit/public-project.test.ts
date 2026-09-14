@@ -36,6 +36,9 @@ describe("publicProject", () => {
   });
 
   it("tolerates a row that has no key yet", () => {
-    expect(publicProject({ uuid: "p-2", project_name: "x" })).toEqual({ uuid: "p-2", project_name: "x" });
+    expect(publicProject({ uuid: "p-2", project_name: "x" })).toEqual({
+      uuid: "p-2",
+      project_name: "x",
+    });
   });
 });

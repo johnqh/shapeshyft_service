@@ -57,3 +57,15 @@ export {
   DEFAULT_ENTITLEMENT_DISPLAY_NAMES,
 } from "./middleware/rateLimit.js";
 export * from "./schemas/index.js";
+export {
+  collectForwardingHeaders,
+  FORWARDING_HEADERS,
+  isIpLiteral,
+  isIpv4,
+  isIpv6,
+  isRoutableClientIp,
+  normalizeClientIp,
+  resolveAllowlistIp,
+  resolveCallerIp,
+} from "./lib/client-ip.js";
+export type { AuthContextVariables } from "./hono-context.js";

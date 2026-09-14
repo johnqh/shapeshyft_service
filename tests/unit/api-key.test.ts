@@ -8,7 +8,11 @@ const {
   decryptProjectApiKey,
   validateProjectApiKey,
   isValidApiKeyFormat,
-} = createProjectApiKeys(createEncryption(() => "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+} = createProjectApiKeys(
+  createEncryption(
+    () => "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  )
+);
 
 describe("API Key", () => {
   describe("generateProjectApiKey", () => {

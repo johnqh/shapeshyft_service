@@ -21,6 +21,16 @@ The service never knows where a provider API key lives. The app passes a
 Optional `InvokeHooks`: `beforeInvoke` (after rate limiting; return a Response to
 stop) and `afterInvoke` (inside the usage_analytics transaction).
 
+## Client IP
+
+`getPeerAddress` (required) supplies the TCP peer, which the service cannot read
+without a runtime adapter; apps pass `getConnInfo` from `hono/bun`. The endpoint
+IP allowlist uses `resolveAllowlistIp` (`lib/client-ip.ts`): a public peer is the
+caller and its headers are ignored; forwarded headers are read only from a
+private peer (our proxy), preferring `CF-Connecting-IP`, then `X-Forwarded-For`
+right to left. Unknown peer means deny. Trusting `CF-Connecting-IP` assumes the
+origin accepts traffic only through Cloudflare and the internal proxy.
+
 ## Rules
 
 - No `process.env`. Add a field to `ShapeshyftServiceConfig` instead.

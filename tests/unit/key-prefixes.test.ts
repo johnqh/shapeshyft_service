@@ -19,8 +19,12 @@ describe("injected key prefixes", () => {
   });
 
   it("does not accept another product's user key", () => {
-    expect(shyft.extractUserApiKeyFromHeaders(header("shroute_abc"))).toBeNull();
-    expect(shroute.extractUserApiKeyFromHeaders(header("shyft_abc"))).toBeNull();
+    expect(
+      shyft.extractUserApiKeyFromHeaders(header("shroute_abc"))
+    ).toBeNull();
+    expect(
+      shroute.extractUserApiKeyFromHeaders(header("shyft_abc"))
+    ).toBeNull();
     expect(shroute.extractUserApiKeyFromHeaders(header("shroute_abc"))).toBe(
       "shroute_abc"
     );

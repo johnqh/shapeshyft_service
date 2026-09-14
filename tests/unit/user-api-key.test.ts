@@ -60,7 +60,9 @@ describe("user-api-key", () => {
 
     it("should not be reversible to the key", () => {
       const { key } = generateUserApiKey();
-      expect(hashUserApiKey(key)).not.toContain(key.slice(USER_API_KEY_PREFIX.length));
+      expect(hashUserApiKey(key)).not.toContain(
+        key.slice(USER_API_KEY_PREFIX.length)
+      );
     });
   });
 
@@ -103,9 +105,9 @@ describe("user-api-key", () => {
     });
 
     it("should reject a Firebase ID token", () => {
-      expect(isUserApiKeyFormat("eyJhbGciOiJSUzI1NiIsImtpZCI6ImFiYyJ9.x.y")).toBe(
-        false
-      );
+      expect(
+        isUserApiKeyFormat("eyJhbGciOiJSUzI1NiIsImtpZCI6ImFiYyJ9.x.y")
+      ).toBe(false);
     });
 
     it("should reject an empty string", () => {
@@ -119,13 +121,17 @@ describe("user-api-key", () => {
 
     it("should read X-API-Key", () => {
       const { key } = generateUserApiKey();
-      expect(extractUserApiKeyFromHeaders(headers({ "X-API-Key": key }))).toBe(key);
+      expect(extractUserApiKeyFromHeaders(headers({ "X-API-Key": key }))).toBe(
+        key
+      );
     });
 
     it("should read Authorization: Bearer", () => {
       const { key } = generateUserApiKey();
       expect(
-        extractUserApiKeyFromHeaders(headers({ Authorization: `Bearer ${key}` }))
+        extractUserApiKeyFromHeaders(
+          headers({ Authorization: `Bearer ${key}` })
+        )
       ).toBe(key);
     });
 

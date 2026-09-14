@@ -10,7 +10,9 @@ import { createUserApiKeys } from "../../src/lib/user-api-key.js";
 
 const { isUserApiKeyFormat, extractUserApiKeyFromHeaders } = createUserApiKeys({
   prefix: "shyft_",
-  encryption: createEncryption(() => "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+  encryption: createEncryption(
+    () => "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  ),
 });
 
 const entityKey = `${ENTITY_API_KEY_PREFIX_WITH_SEPARATOR}abc123def456`;

@@ -42,6 +42,7 @@ import type {
   ResolvedCredential,
 } from "../contracts.js";
 import { toMicroCents } from "../lib/money.js";
+import { resolveAllowlistIp } from "../lib/client-ip.js";
 
 export function createAiRouter(ctx: ServiceContext) {
   const { db } = ctx;
@@ -125,24 +126,21 @@ export function createAiRouter(ctx: ServiceContext) {
   }
 
   /**
-   * Get client IP address from request
+   * The caller's IP, for the endpoint allowlist.
+   *
+   * Forwarded headers are believed only when the connection itself comes from a
+   * private address -- our own proxy. A caller that connects directly is judged
+   * by its connection, so it cannot name an allowlisted address in a header.
+   * Null (deny) when the runtime cannot report the peer.
    */
   function getClientIp(c: any): string | null {
-    // Check common proxy headers first
-    const xForwardedFor = c.req.header("X-Forwarded-For");
-    if (xForwardedFor) {
-      // X-Forwarded-For can be comma-separated list; take the first (client) IP
-      return xForwardedFor.split(",")[0]?.trim() ?? null;
+    let peer: string | null | undefined;
+    try {
+      peer = ctx.getPeerAddress(c);
+    } catch {
+      peer = null;
     }
-
-    const xRealIp = c.req.header("X-Real-IP");
-    if (xRealIp) {
-      return xRealIp;
-    }
-
-    // Fallback to connection info if available
-    // Note: This may not work in all environments
-    return c.req.raw?.socket?.remoteAddress ?? null;
+    return resolveAllowlistIp(peer, name => c.req.header(name));
   }
 
   /**
