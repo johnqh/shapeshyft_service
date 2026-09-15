@@ -31,6 +31,17 @@ private peer (our proxy), preferring `CF-Connecting-IP`, then `X-Forwarded-For`
 right to left. Unknown peer means deny. Trusting `CF-Connecting-IP` assumes the
 origin accepts traffic only through Cloudflare and the internal proxy.
 
+## Process bootstrap (`src/server/`)
+
+What the API shells used to duplicate, as factories they configure:
+`createApiServer` (logger, CORS, 50 MB body limit, `/`, `/health`,
+`/health/ready`, the `/api/v1` mount, and the Bun `fetch` that lifts the idle
+timeout per request for long provider calls), `createLazyDatabase`,
+`createEnvReader` (the shell passes `process.env`), `createFirebaseAuth`, and
+`createInvitationEmailSender` (Resend; entity names are HTML-escaped). A shell
+keeps only its product name, pg schema, key prefixes, and provider key
+management.
+
 ## Rules
 
 - No `process.env`. Add a field to `ShapeshyftServiceConfig` instead.

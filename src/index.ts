@@ -69,3 +69,23 @@ export {
   resolveCallerIp,
 } from "./lib/client-ip.js";
 export type { AuthContextVariables } from "./hono-context.js";
+
+// Process bootstrap for the API shells: env, database, auth, email, server.
+export { createEnvReader, parseEnvFile, type EnvReader } from "./server/env.js";
+export { createLazyDatabase, type LazyDatabase } from "./server/database.js";
+export {
+  createFirebaseAuth,
+  type FirebaseAuthConfig,
+} from "./server/firebase-auth.js";
+export {
+  createInvitationEmailSender,
+  renderInvitationEmail,
+  escapeHtml,
+  type InvitationEmailConfig,
+} from "./server/invitation-email.js";
+export {
+  createApiServer,
+  DEFAULT_BODY_LIMIT_BYTES,
+  type ApiServer,
+  type ApiServerConfig,
+} from "./server/api-server.js";
