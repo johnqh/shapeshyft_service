@@ -22,10 +22,10 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "test": "vitest run",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:db": "vitest run --config vitest.db.config.ts",
-    "verify": "bun run typecheck && bun run lint && bun run test && bun run build",
+    "verify": "bun run typecheck && bun run lint && bun run test:unit && bun run build",
     "prepublishOnly": "bun run clean && bun run verify"
   },
   "author": "Sudobility",
