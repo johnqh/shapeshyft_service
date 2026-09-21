@@ -125,6 +125,46 @@ describe("ai router: credential resolution and hooks", () => {
     expect(rows[0]!.success).toBe(true);
   });
 
+  it("reports how much of the prompt the provider served from its cache", async () => {
+    const cached = {
+      promptTokens: 1000,
+      completionTokens: 20,
+      totalTokens: 1020,
+      cachedInputTokens: 700,
+      cacheWriteInputTokens: 100,
+    };
+    const res = await testApp({
+      credentials: resolverReturning(okCredential),
+      createProvider: fakeLlm(llmCalls, cached),
+    }).request(`/api/v1/ai/${slug}/svc-project/classify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${projectApiKey}`,
+      },
+      body: JSON.stringify({ text: "great" }),
+    });
+    const body = (await res.json()) as {
+      data: { usage: { tokens_input: number; tokens_cached_input?: number } };
+    };
+    // A part of tokens_input, so the two are reported side by side.
+    expect(body.data.usage.tokens_input).toBe(1000);
+    expect(body.data.usage.tokens_cached_input).toBe(700);
+    const [row] = await analyticsRows();
+    expect(row!.request_metadata).toMatchObject({
+      cached_input_tokens: 700,
+      cache_write_tokens: 100,
+    });
+  });
+
+  it("leaves the cache fields out when nothing was cached", async () => {
+    const res = await invoke(resolverReturning(okCredential));
+    const body = (await res.json()) as { data: { usage: object } };
+    expect(body.data.usage).not.toHaveProperty("tokens_cached_input");
+    const [row] = await analyticsRows();
+    expect(row!.request_metadata).not.toHaveProperty("cached_input_tokens");
+  });
+
   it("returns and records the call's cost at sub-cent precision", async () => {
     const res = await invoke(resolverReturning(okCredential));
     const body = (await res.json()) as {

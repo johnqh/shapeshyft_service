@@ -1,5 +1,6 @@
 import type {
   createLLMProvider,
+  LLMUsage,
   ProviderConfig,
 } from "@sudobility/shapeshyft_engine";
 
@@ -8,8 +9,18 @@ export interface FakeLlmCall {
   config: ProviderConfig;
 }
 
-/** Records how providers were constructed; every generate() succeeds. */
-export function fakeLlm(calls: FakeLlmCall[]): typeof createLLMProvider {
+/**
+ * Records how providers were constructed; every generate() succeeds.
+ * `usage` overrides the token counts each call reports.
+ */
+export function fakeLlm(
+  calls: FakeLlmCall[],
+  usage: LLMUsage = {
+    promptTokens: 1000,
+    completionTokens: 20,
+    totalTokens: 1020,
+  }
+): typeof createLLMProvider {
   return ((provider, config) => {
     calls.push({ provider, config });
     return {
@@ -17,7 +28,7 @@ export function fakeLlm(calls: FakeLlmCall[]): typeof createLLMProvider {
       generate: async () => ({
         content: { label: "positive" },
         rawResponse: '{"label":"positive"}',
-        usage: { promptTokens: 1000, completionTokens: 20, totalTokens: 1020 },
+        usage,
         model: "gpt-4o-mini",
         provider,
         latencyMs: 5,

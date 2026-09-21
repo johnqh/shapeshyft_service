@@ -838,6 +838,14 @@ export function createAiRouter(ctx: ServiceContext) {
         request_metadata: {
           model: llmResponse.model,
           provider: llmResponse.provider,
+          // In `request_metadata` rather than a column: a hit rate is read
+          // by joining rows for one endpoint, and this needs no migration.
+          ...(llmResponse.usage.cachedInputTokens
+            ? { cached_input_tokens: llmResponse.usage.cachedInputTokens }
+            : {}),
+          ...(llmResponse.usage.cacheWriteInputTokens
+            ? { cache_write_tokens: llmResponse.usage.cacheWriteInputTokens }
+            : {}),
           ...(llmResponse.finishReason
             ? { finish_reason: llmResponse.finishReason }
             : {}),
@@ -889,6 +897,9 @@ export function createAiRouter(ctx: ServiceContext) {
         usage: {
           tokens_input: llmResponse.usage.promptTokens,
           tokens_output: llmResponse.usage.completionTokens,
+          ...(llmResponse.usage.cachedInputTokens
+            ? { tokens_cached_input: llmResponse.usage.cachedInputTokens }
+            : {}),
           latency_ms: llmResponse.latencyMs,
           // Micro-cent precision, the same the analytics row keeps; beyond it
           // is floating-point noise.
