@@ -39,6 +39,7 @@ export const LLM_PROVIDER_VALUES = [
   "deepseek",
   "perplexity",
   "lm_studio",
+  "jev",
 ] as const;
 
 export function createServiceTables(

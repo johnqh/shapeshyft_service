@@ -31,7 +31,7 @@ export async function initServiceTables(
   // Create enums (if they don't exist)
   await client.unsafe(`
     DO $$ BEGIN
-      CREATE TYPE ${s}.llm_provider AS ENUM ('openai', 'anthropic', 'gemini', 'mistral', 'cohere', 'groq', 'xai', 'deepseek', 'perplexity', 'lm_studio');
+      CREATE TYPE ${s}.llm_provider AS ENUM ('openai', 'anthropic', 'gemini', 'mistral', 'cohere', 'groq', 'xai', 'deepseek', 'perplexity', 'lm_studio', 'jev');
     EXCEPTION
       WHEN duplicate_object THEN null;
     END $$;
@@ -68,6 +68,10 @@ export async function initServiceTables(
       -- Add lm_studio if not exists
       IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'lm_studio' AND enumtypid = '${s}.llm_provider'::regtype) THEN
         ALTER TYPE ${s}.llm_provider ADD VALUE 'lm_studio';
+      END IF;
+      -- Add jev if not exists
+      IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'jev' AND enumtypid = '${s}.llm_provider'::regtype) THEN
+        ALTER TYPE ${s}.llm_provider ADD VALUE 'jev';
       END IF;
     END $$;
   `);

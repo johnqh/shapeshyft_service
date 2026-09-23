@@ -89,6 +89,7 @@ export const llmProviderSchema = z.enum([
   "deepseek",
   "perplexity",
   "lm_studio",
+  "jev",
 ]);
 
 export const httpMethodSchema = z.enum(["GET", "POST"]);
