@@ -15,6 +15,7 @@ import {
   type JsonSchema,
   type AiExecutionResponse,
   type AiPromptResponse,
+  type LlmProvider,
 } from "@sudobility/shapeshyft_engine/types";
 import {
   ApiHelper,
@@ -29,6 +30,9 @@ import {
   getProviderForModel,
   extractReservedFields,
   resolveMaxOutputTokens,
+  resolveProviderOverride,
+  buildProviderRequest,
+  type ProviderOverride,
 } from "@sudobility/shapeshyft_engine";
 import {
   EntitlementHelper,
@@ -90,8 +94,13 @@ export function createAiRouter(ctx: ServiceContext) {
     entity: EntityRow;
     project: ProjectRow;
     endpoint: EndpointRow;
-    /** The app-resolved credential; its provider is authoritative for the call */
-    credential: ResolvedCredential;
+    /**
+     * The app-resolved credential; its provider is authoritative for the call.
+     * Null only for /prompt with `llm_provider`, which needs no stored key.
+     */
+    credential: ResolvedCredential | null;
+    /** The caller's `llm_provider` / `llm_model`, validated; null for none */
+    override: ProviderOverride | null;
     inputData: unknown;
   }
 
@@ -355,8 +364,14 @@ export function createAiRouter(ctx: ServiceContext) {
   /**
    * Validate request and get all required context data.
    * This is shared between /prompt and main endpoints.
+   *
+   * @param mode - "prompt" skips credential resolution when the caller names
+   *   its own provider with `llm_provider`: the request is described, not sent.
    */
-  async function validateAndGetContext(c: any): Promise<ValidationResult> {
+  async function validateAndGetContext(
+    c: any,
+    mode: "invoke" | "prompt"
+  ): Promise<ValidationResult> {
     const { organizationPath, projectName, endpointName } =
       c.req.valid("param");
 
@@ -501,20 +516,62 @@ export function createAiRouter(ctx: ServiceContext) {
       };
     }
 
-    // 8. Resolve the provider credential. Where it comes from is the app's
+    // 8. A call-time provider override (`llm_provider` / `llm_model`). An
+    // invalid one fails before anything is resolved or counted.
+    const reserved = extractReservedFields(inputData);
+    const overrideResult = resolveProviderOverride(
+      reserved.llmProvider,
+      reserved.llmModel
+    );
+    if (!overrideResult.ok) {
+      return {
+        success: false,
+        response: c.json(errorResponse(overrideResult.error), 400),
+      };
+    }
+    const override = overrideResult.value;
+
+    // /prompt with an override describes a request for the caller's own key:
+    // nothing to resolve.
+    if (mode === "prompt" && override) {
+      return {
+        success: true,
+        entity,
+        project,
+        endpoint,
+        credential: null,
+        override,
+        inputData,
+      };
+    }
+
+    // 9. Resolve the provider credential. Where it comes from is the app's
     // business (an entity's LLM key, a site-owned provider key). Kept here,
     // before rate limiting, so a missing credential fails without consuming a
-    // rate-limit count -- the order this lookup always had.
+    // rate-limit count -- the order this lookup always had. With an override,
+    // the resolver is asked for the entity's key for that provider.
     let credential: ResolvedCredential;
     try {
       const resolved = await ctx.credentials.resolve({
         entityId: entity.id,
         endpoint,
+        ...(override ? { provider: override.provider } : {}),
       });
       if (!resolved.ok) {
         return {
           success: false,
           response: c.json(errorResponse(resolved.message), resolved.status),
+        };
+      }
+      // A resolver that ignores `provider` must not run the override's model
+      // on another provider's key.
+      if (override && resolved.provider !== override.provider) {
+        return {
+          success: false,
+          response: c.json(
+            errorResponse(noActiveKeyMessage(override.provider)),
+            400
+          ),
         };
       }
       credential = resolved;
@@ -535,7 +592,164 @@ export function createAiRouter(ctx: ServiceContext) {
       project,
       endpoint,
       credential,
+      override,
       inputData,
+    };
+  }
+
+  function noActiveKeyMessage(provider: LlmProvider): string {
+    return `No active ${provider} API key for this organization`;
+  }
+
+  /** What a call needs once the input is read, or the 400 that stops it. */
+  type CallPlan =
+    | { ok: false; status: 400; error: string }
+    | {
+        ok: true;
+        prompts: { system: string; user: string };
+        /** Everything but the output-media and Whisper-extraction fields */
+        request: Omit<
+          LLMRequest,
+          | "outputMediaFormat"
+          | "entityId"
+          | "extractionModel"
+          | "extractionApiKey"
+        >;
+        ceilingValue: number | null;
+      };
+
+  /**
+   * Turn an invocation's input into the provider request: reserved fields out,
+   * the output ceiling, media extracted and converted, the prompts. Shared by
+   * invoke and /prompt, so the request /prompt describes is the one invoke
+   * sends.
+   */
+  async function planCall(
+    endpoint: EndpointRow,
+    inputData: unknown,
+    provider: LlmProvider,
+    model: string | undefined
+  ): Promise<CallPlan> {
+    // Pull out every reserved field in one pass, before anything builds a prompt
+    const {
+      context: contextOverride,
+      webSearch: webSearchPreference,
+      maxOutputTokens: requestedMaxOutputTokens,
+      cleanedInput: inputWithoutReserved,
+    } = extractReservedFields(inputData);
+
+    // Resolve the output ceiling: the caller may lower the endpoint's limit but
+    // never raise it. A malformed value fails the request rather than silently
+    // leaving the caller unprotected.
+    const ceiling = resolveMaxOutputTokens(
+      endpoint.max_output_tokens,
+      requestedMaxOutputTokens
+    );
+    if (!ceiling.ok) {
+      return { ok: false, status: 400, error: ceiling.error };
+    }
+
+    // Extract media from input data (after removing reserved fields)
+    const extractionResult = extractMediaFromInput(
+      inputWithoutReserved as Record<string, unknown>
+    );
+    if (extractionResult.error) {
+      return { ok: false, status: 400, error: extractionResult.error };
+    }
+    const { cleanedInput, media: extractedMedia } = extractionResult.result!;
+
+    // Convert unsupported image formats (SVG, TIFF, etc.) to PNG
+    let media = extractedMedia;
+    if (extractedMedia.length > 0) {
+      try {
+        media = await convertAllMediaIfNeeded(extractedMedia);
+      } catch (conversionError) {
+        const errorMessage =
+          conversionError instanceof Error
+            ? conversionError.message
+            : "Failed to convert image format";
+        return { ok: false, status: 400, error: errorMessage };
+      }
+    }
+
+    // Validate media capabilities if media was extracted
+    if (media.length > 0 && model) {
+      const validation = validateMediaCapabilities({
+        model,
+        provider,
+        inputMedia: media,
+        expectsOutput: {
+          // For now, we don't have explicit output config in endpoints
+          // This can be extended when we add output media support
+        },
+      });
+
+      if (!validation.valid) {
+        return { ok: false, status: 400, error: validation.errors.join("; ") };
+      }
+
+      // Additional Whisper validation
+      if (isTranscriptionModel(model)) {
+        const whisperValidation = validateWhisperRequest(model, media);
+        if (!whisperValidation.valid) {
+          return {
+            ok: false,
+            status: 400,
+            error: whisperValidation.errors.join("; "),
+          };
+        }
+      }
+    }
+
+    // Build the prompts for LLM call (providers expect system/user format)
+    // Use cleaned input (media replaced with placeholders)
+    // Use context override if provided, otherwise use endpoint's configured context
+    const prompts = ApiHelper.buildLegacyPrompts({
+      inputData: cleanedInput,
+      outputSchema: endpoint.output_schema as JsonSchema | null,
+      instructions: endpoint.instructions,
+      context: contextOverride ?? endpoint.context,
+      provider,
+    });
+
+    // Parse media output configuration from endpoint
+    const expectsMediaOutput = endpoint.expects_media_output as {
+      audio?: boolean;
+      image?: boolean;
+      video?: boolean;
+    } | null;
+
+    return {
+      ok: true,
+      prompts,
+      ceilingValue: ceiling.value,
+      request: {
+        prompt: prompts.user,
+        systemPrompt: prompts.system,
+        outputSchema: (endpoint.output_schema as JsonSchema) ?? {
+          type: "object",
+        },
+        model,
+        media: media.length > 0 ? media : undefined,
+        expectsMediaOutput: expectsMediaOutput ?? undefined,
+        webSearch: resolveWebSearch(
+          endpoint.web_search ?? false,
+          webSearchPreference
+        ),
+        // null means the endpoint opted out of runaway protection; the providers
+        // treat undefined as "no limit".
+        maxTokens: ceiling.value ?? undefined,
+        /*
+          NULL becomes undefined rather than 0, and the two are different answers.
+
+          Undefined leaves every adapter exactly as it was: OpenAI, Gemini, Groq
+          and the custom provider apply their own `?? 0`, while Anthropic omits the
+          field entirely because Opus 4.7+ and Sonnet 5 reject it with a 400.
+          Passing 0 here would send a value to the models that refuse one, and
+          would do it to every endpoint that predates this column.
+        */
+        temperature: endpoint.temperature ?? undefined,
+      },
     };
   }
 
@@ -547,18 +761,22 @@ export function createAiRouter(ctx: ServiceContext) {
    * Handle prompt generation request - returns just the prompt without calling LLM
    */
   async function handlePromptRequest(c: any) {
-    const validationResult = await validateAndGetContext(c);
+    const validationResult = await validateAndGetContext(c, "prompt");
     if (!validationResult.success) {
       return validationResult.response;
     }
 
-    const { entity, endpoint, credential, inputData } = validationResult;
+    const { entity, endpoint, credential, override, inputData } =
+      validationResult;
 
     // Check rate limits using entity's subscription
     const rateLimitResponse = await checkRateLimit(c, entity);
     if (rateLimitResponse) {
       return rateLimitResponse;
     }
+
+    // Credential is null only when the override names the provider
+    const provider = override?.provider ?? credential!.provider;
 
     // Strip reserved fields so the preview matches what an invocation would send
     const { context: contextOverride, cleanedInput } =
@@ -571,10 +789,41 @@ export function createAiRouter(ctx: ServiceContext) {
       outputSchema: endpoint.output_schema as JsonSchema | null,
       instructions: endpoint.instructions,
       context: contextOverride ?? endpoint.context,
-      provider: credential.provider,
+      provider,
     });
 
     const promptResponse: AiPromptResponse = { prompt };
+
+    // With `llm_provider`: the exact request invoke would send, for the
+    // caller to send with its own key. Same plan, same prompts, same body
+    // builder the provider adapters use. (Web search, which runs as several
+    // Responses API calls, is not described: this is the plain chat call.)
+    if (override) {
+      const plan = await planCall(
+        endpoint,
+        inputData,
+        override.provider,
+        override.model
+      );
+      if (!plan.ok) {
+        return c.json(errorResponse(plan.error), plan.status);
+      }
+      try {
+        promptResponse.request = buildProviderRequest({
+          ...plan.request,
+          provider: override.provider,
+          model: override.model,
+        });
+      } catch (error) {
+        return c.json(
+          errorResponse(
+            error instanceof Error ? error.message : "Unsupported provider"
+          ),
+          400
+        );
+      }
+    }
+
     return c.json(successResponse<AiPromptResponse>(promptResponse));
   }
 
@@ -588,13 +837,14 @@ export function createAiRouter(ctx: ServiceContext) {
   async function handleAIRequest(c: any) {
     const startTime = Date.now();
 
-    const validationResult = await validateAndGetContext(c);
+    const validationResult = await validateAndGetContext(c, "invoke");
     if (!validationResult.success) {
       return validationResult.response;
     }
 
-    const { entity, project, endpoint, credential, inputData } =
-      validationResult;
+    const { entity, project, endpoint, override, inputData } = validationResult;
+    // Always resolved on the invoke path
+    const credential = validationResult.credential!;
 
     // Check rate limits using entity's subscription
     const rateLimitResponse = await checkRateLimit(c, entity);
@@ -614,78 +864,20 @@ export function createAiRouter(ctx: ServiceContext) {
       if (stop) return stop;
     }
 
-    // Pull out every reserved field in one pass, before anything builds a prompt
-    const {
-      context: contextOverride,
-      webSearch: webSearchPreference,
-      maxOutputTokens: requestedMaxOutputTokens,
-      cleanedInput: inputWithoutReserved,
-    } = extractReservedFields(inputData);
+    // Determine model: the caller's override, else the endpoint's
+    const model = override ? override.model : (endpoint.model ?? undefined);
 
-    // Resolve the output ceiling: the caller may lower the endpoint's limit but
-    // never raise it. A malformed value fails the request rather than silently
-    // leaving the caller unprotected.
-    const ceiling = resolveMaxOutputTokens(
-      endpoint.max_output_tokens,
-      requestedMaxOutputTokens
+    const plan = await planCall(
+      endpoint,
+      inputData,
+      credential.provider,
+      model
     );
-    if (!ceiling.ok) {
-      return c.json(errorResponse(ceiling.error), 400);
+    if (!plan.ok) {
+      return c.json(errorResponse(plan.error), plan.status);
     }
-
-    // Extract media from input data (after removing reserved fields)
-    const extractionResult = extractMediaFromInput(
-      inputWithoutReserved as Record<string, unknown>
-    );
-    if (extractionResult.error) {
-      return c.json(errorResponse(extractionResult.error), 400);
-    }
-    const { cleanedInput, media: extractedMedia } = extractionResult.result!;
-
-    // Convert unsupported image formats (SVG, TIFF, etc.) to PNG
-    let media = extractedMedia;
-    if (extractedMedia.length > 0) {
-      try {
-        media = await convertAllMediaIfNeeded(extractedMedia);
-      } catch (conversionError) {
-        const errorMessage =
-          conversionError instanceof Error
-            ? conversionError.message
-            : "Failed to convert image format";
-        return c.json(errorResponse(errorMessage), 400);
-      }
-    }
-
-    // Determine model (from endpoint config)
-    const model = endpoint.model ?? undefined;
-
-    // Validate media capabilities if media was extracted
-    if (media.length > 0 && model) {
-      const validation = validateMediaCapabilities({
-        model,
-        provider: credential.provider,
-        inputMedia: media,
-        expectsOutput: {
-          // For now, we don't have explicit output config in endpoints
-          // This can be extended when we add output media support
-        },
-      });
-
-      if (!validation.valid) {
-        return c.json(errorResponse(validation.errors.join("; ")), 400);
-      }
-
-      // Additional Whisper validation
-      if (isTranscriptionModel(model)) {
-        const whisperValidation = validateWhisperRequest(model, media);
-        if (!whisperValidation.valid) {
-          return c.json(
-            errorResponse(whisperValidation.errors.join("; ")),
-            400
-          );
-        }
-      }
-    }
+    const { prompts } = plan;
+    const ceiling = { value: plan.ceilingValue };
 
     /*
       Whisper can hand its transcription to a second model for structured
@@ -708,52 +900,10 @@ export function createAiRouter(ctx: ServiceContext) {
       );
     }
 
-    // Build the prompts for LLM call (providers expect system/user format)
-    // Use cleaned input (media replaced with placeholders)
-    // Use context override if provided, otherwise use endpoint's configured context
-    const prompts = ApiHelper.buildLegacyPrompts({
-      inputData: cleanedInput,
-      outputSchema: endpoint.output_schema as JsonSchema | null,
-      instructions: endpoint.instructions,
-      context: contextOverride ?? endpoint.context,
-      provider: credential.provider,
-    });
-
-    // Parse media output configuration from endpoint
-    const expectsMediaOutput = endpoint.expects_media_output as {
-      audio?: boolean;
-      image?: boolean;
-      video?: boolean;
-    } | null;
-
     // Create LLM request with media
     // Use proper discriminated union based on output format
     const baseRequest = {
-      prompt: prompts.user,
-      systemPrompt: prompts.system,
-      outputSchema: (endpoint.output_schema as JsonSchema) ?? {
-        type: "object",
-      },
-      model,
-      media: media.length > 0 ? media : undefined,
-      expectsMediaOutput: expectsMediaOutput ?? undefined,
-      webSearch: resolveWebSearch(
-        endpoint.web_search ?? false,
-        webSearchPreference
-      ),
-      // null means the endpoint opted out of runaway protection; the providers
-      // treat undefined as "no limit".
-      maxTokens: ceiling.value ?? undefined,
-      /*
-        NULL becomes undefined rather than 0, and the two are different answers.
-
-        Undefined leaves every adapter exactly as it was: OpenAI, Gemini, Groq
-        and the custom provider apply their own `?? 0`, while Anthropic omits the
-        field entirely because Opus 4.7+ and Sonnet 5 reject it with a 400.
-        Passing 0 here would send a value to the models that refuse one, and
-        would do it to every endpoint that predates this column.
-      */
-      temperature: endpoint.temperature ?? undefined,
+      ...plan.request,
       ...(extractionModel
         ? { extractionModel, extractionApiKey: credential.apiKey }
         : {}),

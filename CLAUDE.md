@@ -16,7 +16,29 @@ The service never knows where a provider API key lives. The app passes a
 - `bindEndpoint` — endpoint create/update; returns the `provider` and
   `llmKeyId` to persist, or a `{ status, message }` failure.
 - `resolve` — invoke and prompt-preview time; returns `provider`, `apiKey`,
-  `endpointUrl`, `timeoutMs`, or a failure.
+  `endpointUrl`, `timeoutMs`, or a failure. Given `provider` (the caller's
+  `llm_provider` override), it returns the entity's credential for that
+  provider or a 400 (`No active <provider> API key for this organization`); a
+  credential for any other provider is refused with that message.
+
+## Call-time provider override (`llm_provider`, `llm_model`)
+
+Reserved input fields, stripped like `context`. An invalid `llm_provider` is a
+400; an omitted `llm_model` takes the catalog `defaultModel`; without
+`llm_provider` nothing changes (`llm_model` alone is ignored).
+
+- Invoke runs on the credential `resolve({ ..., provider })` returns, with the
+  override model.
+- `/prompt` returns `{ prompt, request }`: `prompt` as before, and `request`
+  (an `AiProviderRequest`: `provider`, `model`, `method`, `url`, non-secret
+  `headers`, `auth: { header, prefix }`, `body`) describing the call invoke
+  would make. No key is resolved for it. Both routes build that call through
+  `planCall` (reserved fields, output ceiling, media, `buildLegacyPrompts`) and
+  the engine's `buildProviderRequest`, the builder the adapters send with, so
+  `request.body` is what invoke sends. Web search (OpenAI Responses API, up to
+  three calls) is not described; the body is the plain chat call. Providers
+  `buildProviderRequest` cannot describe (Gemini, Jev, LM Studio, Whisper) are
+  a 400.
 
 Optional `InvokeHooks`: `beforeInvoke` (after rate limiting; return a Response to
 stop) and `afterInvoke` (inside the usage_analytics transaction).

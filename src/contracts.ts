@@ -79,10 +79,20 @@ export interface ProviderCredentialResolver {
     current?: EndpointRow;
   }): Promise<EndpointBinding | ResolverFailure>;
 
-  /** Invoke and prompt-preview time. */
+  /**
+   * Invoke and prompt-preview time.
+   *
+   * `provider` is set when the caller overrode the endpoint's provider with
+   * `llm_provider`: return this entity's credential for that provider (scoped
+   * to `entityId`), or a 400 failure -- ShapeShyft's message is
+   * "No active <provider> API key for this organization". A credential for a
+   * different provider is refused by the service with that message. Not called
+   * for /prompt with an override, which needs no key.
+   */
   resolve(ctx: {
     entityId: string;
     endpoint: EndpointRow;
+    provider?: LlmProvider;
   }): Promise<ResolvedCredential | ResolverFailure>;
 }
 

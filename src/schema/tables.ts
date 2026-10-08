@@ -40,6 +40,7 @@ export const LLM_PROVIDER_VALUES = [
   "perplexity",
   "lm_studio",
   "jev",
+  "openrouter",
 ] as const;
 
 export function createServiceTables(

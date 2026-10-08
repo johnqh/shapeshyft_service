@@ -90,6 +90,7 @@ export const llmProviderSchema = z.enum([
   "perplexity",
   "lm_studio",
   "jev",
+  "openrouter",
 ]);
 
 export const httpMethodSchema = z.enum(["GET", "POST"]);
